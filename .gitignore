@@ -42,3 +42,6 @@ sysinfo.txt
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Unity Packages - let Unity Package Manager restore them
+Packages/
