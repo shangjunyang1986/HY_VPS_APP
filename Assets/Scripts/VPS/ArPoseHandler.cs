@@ -16,6 +16,7 @@ namespace VPS
         [Header("References")]
         [SerializeField] private Camera arCamera;
         [SerializeField] private VpsClient vpsClient;
+        [SerializeField] private VpsAnchor vpsAnchor;
 
         [Header("AR References (auto-detected on device)")]
         [SerializeField] private ARCameraManager arCameraManager;
@@ -50,6 +51,7 @@ namespace VPS
         // Cached VIO pose at the moment of VPS capture (for offset calculation)
         private Vector3 _captureVioPos;
         private Quaternion _captureVioRot;
+        private bool _receivedFusedPoseThisRequest;
 
         // EasyAR tracking mode
         private bool _useEasyAR;
@@ -77,6 +79,12 @@ namespace VPS
 
         public bool IsCapturing => isCapturing;
         public int FrameCount => frameCount;
+
+        /// <summary>
+        /// When true, StartCapturing() will be suppressed (e.g., during scan mode).
+        /// Set by VpsScanUI to prevent auto-start from re-enabling localization.
+        /// </summary>
+        public bool PausedForScan { get; set; }
         public VpsTriggerController Trigger => _trigger;
         public ClientFusion Fusion => _fusion;
         public string CaptureMode => captureMode;
@@ -298,6 +306,12 @@ namespace VPS
 
         public void StartCapturing()
         {
+            if (PausedForScan)
+            {
+                Debug.Log("[AR Pose] StartCapturing suppressed — scan mode active");
+                return;
+            }
+
             isCapturing = true;
             frameCount = 0;
             _trigger?.Reset();
@@ -434,8 +448,14 @@ namespace VPS
         private System.Collections.IEnumerator SendFrameAndWait(Texture2D image, float timestamp, Intrinsics intrinsics, VioPoseInput vioPose)
         {
             _isSending = true;
+            _receivedFusedPoseThisRequest = false;
             yield return StartCoroutine(vpsClient.SendFrame(image, timestamp, intrinsics, vioPose));
             _isSending = false;
+
+            if (!_receivedFusedPoseThisRequest && (vpsClient.TrackingState == "VPS_DEGRADED" || vpsClient.TrackingState == "RELOCALIZING"))
+            {
+                _trigger.OnVpsResponse(vpsClient.TrackingState, false, 0f, _captureVioPos);
+            }
         }
 
         /// <summary>
@@ -444,6 +464,9 @@ namespace VPS
         private void OnFusedPoseReceived(VpsPose fusedPose)
         {
             if (fusedPose == null || fusedPose.position == null || fusedPose.position.Length < 3) return;
+
+            _receivedFusedPoseThisRequest = true;
+            vpsAnchor?.SetPose(fusedPose);
 
             Vector3 vpsPos = new Vector3(fusedPose.position[0], fusedPose.position[1], fusedPose.position[2]);
 
@@ -475,12 +498,7 @@ namespace VPS
 
         private void OnTrackingStateChanged(string newState)
         {
-            // If server reports failure-related state change without a fused pose
-            if (newState == "VPS_DEGRADED" || newState == "RELOCALIZING")
-            {
-                Vector3 pos = (_useWebCam || _useEasyAR) ? Vector3.zero : arCamera.transform.position;
-                _trigger.OnVpsResponse(newState, false, 0f, pos);
-            }
+            // Tracking state is consumed after each request; failure counting happens in SendFrameAndWait.
         }
 
         /// <summary>

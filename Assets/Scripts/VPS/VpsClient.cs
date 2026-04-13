@@ -26,6 +26,7 @@ namespace VPS
         public int num_inliers;
         public float latency_ms;
         public string failure_reason;
+        public bool vps_used_for_fusion;
     }
 
     [Serializable]
@@ -76,7 +77,7 @@ namespace VPS
     public class VpsClient : MonoBehaviour
     {
         [Header("VPS Settings")]
-        [SerializeField] private string serverUrl = "http://192.168.1.8:8000";
+        [SerializeField] private string serverUrl = "http://192.168.1.8:8001";
         [SerializeField] private string mapId = "default_map";
 
         [Header("Status")]
@@ -85,12 +86,20 @@ namespace VPS
         [SerializeField] private bool isConnected = false;
         [SerializeField] private float lastLatencyMs = 0f;
 
+        [Header("Last Frame Info")]
+        [SerializeField] private string lastQualityLevel = "";
+        [SerializeField] private int lastNumInliers = 0;
+        [SerializeField] private bool lastVpsUsedForFusion = false;
+
         public string ServerUrl { get => serverUrl; set => serverUrl = value; }
         public string MapId { get => mapId; set => mapId = value; }
         public string SessionId => sessionId;
         public string TrackingState => trackingState;
         public bool IsConnected => isConnected;
         public float LastLatencyMs => lastLatencyMs;
+        public string LastQualityLevel => lastQualityLevel;
+        public int LastNumInliers => lastNumInliers;
+        public bool LastVpsUsedForFusion => lastVpsUsedForFusion;
 
         public event Action<VpsPose> OnPoseReceived;
         public event Action<VpsPose> OnFusedPoseReceived;
@@ -189,25 +198,25 @@ namespace VPS
             {
                 var response = JsonUtility.FromJson<SessionFrameResponse>(request.downloadHandler.text);
 
-                if (response.success)
-                {
-                    lastLatencyMs = response.latency_ms;
-                    string prevState = trackingState;
-                    trackingState = response.tracking_state;
+                lastLatencyMs = response.latency_ms;
+                lastQualityLevel = response.quality_level ?? "";
+                lastNumInliers = response.num_inliers;
+                lastVpsUsedForFusion = response.vps_used_for_fusion;
 
-                    if (prevState != trackingState)
-                        OnTrackingStateChanged?.Invoke(trackingState);
+                string prevState = trackingState;
+                trackingState = response.tracking_state;
 
-                    if (response.pose != null)
-                        OnPoseReceived?.Invoke(response.pose);
+                if (prevState != trackingState)
+                    OnTrackingStateChanged?.Invoke(trackingState);
 
-                    if (response.fused_pose != null)
-                        OnFusedPoseReceived?.Invoke(response.fused_pose);
-                }
-                else
-                {
+                if (response.success && response.pose != null)
+                    OnPoseReceived?.Invoke(response.pose);
+
+                if (response.fused_pose != null)
+                    OnFusedPoseReceived?.Invoke(response.fused_pose);
+
+                if (!response.success)
                     Debug.LogWarning($"[VPS] Frame failed: {response.failure_reason}");
-                }
             }
             else
             {

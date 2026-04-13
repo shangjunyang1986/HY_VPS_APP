@@ -18,7 +18,7 @@ namespace VPS
     public class EasyARTracker : MonoBehaviour
     {
         [Header("EasyAR Settings")]
-        [SerializeField] private int captureWidth = 640;
+        [SerializeField] private int captureWidth = 1280;
 
 #if EASYAR_ENABLE
         [Header("EasyAR References (auto-detected if null)")]
