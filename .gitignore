@@ -45,3 +45,7 @@ Thumbs.db
 
 # Unity Packages - let Unity Package Manager restore them
 Packages/
+
+# Unity Plugin Downloads
+EasyARSenseUnityPlugin_*/
+*.tgz
